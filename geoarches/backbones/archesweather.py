@@ -183,7 +183,12 @@ class ArchesWeatherCondBackbone(nn.Module):
         emb_dim=192,
         cond_dim=256,  # dim of the conditioning
         num_heads=(6, 12, 12, 6),
-        window_size=(1, 6, 10),
+        # window_size=(1, 6, 10),
+        window_size_stage1=None,
+        window_size_stage2=None,
+        window_size_stage3=None,
+        window_size_stage4=None,
+        use_shift=False,
         droppath_coeff=0.2,
         depth_multiplier=2,
         dropout=0.0,
@@ -209,28 +214,56 @@ class ArchesWeatherCondBackbone(nn.Module):
         if first_interaction_layer == "linear":
             self.interaction_layer = LinVert(in_features=emb_dim)
 
+        if window_size_stage1 is None:
+            window_size_stage1 = (1, *self.layer1_shape)
+        if window_size_stage2 is None:
+            window_size_stage2 = (1, *self.layer2_shape)
+        if window_size_stage3 is None:
+            window_size_stage3 = (1, *self.layer2_shape)
+        if window_size_stage4 is None:
+            window_size_stage4 = (1, *self.layer1_shape)
+
+        # layer_args = dict(
+        #    cond_dim=cond_dim,
+        #    window_size=window_size,
+        #    act_layer=nn.GELU,
+        #    drop=dropout,
+        #    mlp_layer=Mlp,
+        #    mlp_ratio=mlp_ratio,
+        # )
         layer_args = dict(
             cond_dim=cond_dim,
-            window_size=window_size,
             act_layer=nn.GELU,
             drop=dropout,
             mlp_layer=Mlp,
             mlp_ratio=mlp_ratio,
+            use_shift=use_shift,
         )
 
         if mlp_layer == "swiglu":
             layer_args["mlp_ratio"] = mlp_ratio * 2 / 3
             layer_args["mlp_layer"] = SwiGLU
 
+        # self.layer1 = CondBasicLayer(
+        #    dim=emb_dim,
+        #    input_resolution=(self.zdim, *self.layer1_shape),
+        #    depth=2 * depth_multiplier,
+        #    num_heads=num_heads[0],
+        #    drop_path=drop_path[: 2 * depth_multiplier],
+        #    **layer_args,
+        #    **kwargs,
+        # )
         self.layer1 = CondBasicLayer(
             dim=emb_dim,
             input_resolution=(self.zdim, *self.layer1_shape),
             depth=2 * depth_multiplier,
             num_heads=num_heads[0],
+            window_size=window_size_stage1,
             drop_path=drop_path[: 2 * depth_multiplier],
             **layer_args,
             **kwargs,
         )
+
         self.downsample = DownSample(
             in_dim=emb_dim,
             input_resolution=(self.zdim, *self.layer1_shape),
@@ -241,6 +274,7 @@ class ArchesWeatherCondBackbone(nn.Module):
             input_resolution=(self.zdim, *self.layer2_shape),
             depth=6 * depth_multiplier,
             num_heads=num_heads[1],
+            window_size=window_size_stage2,
             drop_path=drop_path[2 * depth_multiplier :],
             **layer_args,
             **kwargs,
@@ -250,6 +284,7 @@ class ArchesWeatherCondBackbone(nn.Module):
             input_resolution=(self.zdim, *self.layer2_shape),
             depth=6 * depth_multiplier,
             num_heads=num_heads[2],
+            window_size=window_size_stage3,
             drop_path=drop_path[2 * depth_multiplier :],
             **layer_args,
             **kwargs,
@@ -263,6 +298,7 @@ class ArchesWeatherCondBackbone(nn.Module):
             input_resolution=(self.zdim, *self.layer1_shape),
             depth=2 * depth_multiplier,
             num_heads=num_heads[3],
+            window_size=window_size_stage4,
             drop_path=drop_path[: 2 * depth_multiplier],
             **layer_args,
             **kwargs,

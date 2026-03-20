@@ -27,7 +27,7 @@ parser.add_argument(
     help="where to store outputs",
 )
 parser.add_argument("--debug", action="store_true", help="whether to debug")
-parser.add_argument("--max-lead-time", type=int, default=10, help="max lead time")
+parser.add_argument("--max-lead-time", type=int, default=40, help="max lead time")
 parser.add_argument(
     "--uids",
     default="",

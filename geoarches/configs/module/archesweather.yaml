@@ -40,7 +40,11 @@ backbone:
   tensor_size: [8, 16, 32] # after embed
   emb_dim: 192
   cond_dim: 256
-  window_size: [1, 6, 10]
+  window_size_stage1: [1, 16, 32]
+  window_size_stage2: [1, 8, 16]
+  window_size_stage3: [1, 8, 16]
+  window_size_stage4: [1, 16, 32]
+  use_shift: False
   droppath_coeff: 0.2
   dropout: 0
   depth_multiplier: 2

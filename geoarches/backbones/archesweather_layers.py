@@ -532,6 +532,7 @@ class BasicLayer(nn.Module):
         drop=0.0,
         attn_drop=0.0,
         drop_path=0.0,
+        use_shift=True,
         act_layer=nn.GELU,
         norm_layer=nn.LayerNorm,
         mlp_layer=Mlp,
@@ -541,6 +542,7 @@ class BasicLayer(nn.Module):
         self.dim = dim
         self.input_resolution = input_resolution
         self.depth = depth
+        self.use_shift = use_shift
 
         self.blocks = nn.ModuleList(
             [
@@ -556,7 +558,7 @@ class BasicLayer(nn.Module):
                     drop=drop,
                     attn_drop=attn_drop,
                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                    roll_type=(i % 2),  # 1 or 3
+                    roll_type=(i % 2) if use_shift else 0,  # 1 or 3
                     act_layer=act_layer,
                     mlp_layer=mlp_layer,
                     norm_layer=norm_layer,
