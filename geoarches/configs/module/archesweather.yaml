@@ -10,7 +10,7 @@ module:
   num_training_steps: ${max_steps}
   use_graphcast_coeffs: True
   use_prev: False
-  loss_delta_normalization: True
+  loss_delta_normalization: False
 
 defaults:
   - metrics:  # Read from module/metrics/ folder.

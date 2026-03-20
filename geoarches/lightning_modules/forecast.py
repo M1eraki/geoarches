@@ -71,11 +71,14 @@ class ForecastModule(BaseLightningModule):
         )  # graphcast, mul 4 because we do a mean
         level_coeffs = 6 * torch.tensor(1).reshape(-1, 1, 1, 1)
 
+        # self.loss_coeffs = TensorDict(
+        #    surface=area_weights * surface_coeffs / total_coeff,
+        #    level=area_weights * level_coeffs * vertical_coeffs / total_coeff,
+        # )
         self.loss_coeffs = TensorDict(
-            surface=area_weights * surface_coeffs / total_coeff,
-            level=area_weights * level_coeffs * vertical_coeffs / total_coeff,
+            surface=area_weights,
+            level=area_weights,
         )
-
         if loss_delta_normalization:
             # assumes include vertical wind component
 
