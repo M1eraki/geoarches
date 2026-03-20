@@ -9,7 +9,7 @@ module:
   num_warmup_steps: 5000
   num_training_steps: ${max_steps}
   use_graphcast_coeffs: True
-  use_prev: True
+  use_prev: False
   loss_delta_normalization: True
 
 defaults:
@@ -37,7 +37,7 @@ inference:
 backbone:
   # default backbone
   _target_: geoarches.backbones.archesweather.ArchesWeatherCondBackbone
-  tensor_size: [8, 60, 120] # after embed
+  tensor_size: [8, 16, 32] # after embed
   emb_dim: 192
   cond_dim: 256
   window_size: [1, 6, 10]
@@ -52,13 +52,13 @@ backbone:
 
 embedder: 
   _target_: geoarches.backbones.archesweather.WeatherEncodeDecodeLayer
-  img_size: [13, 121, 240]
+  img_size: [13, 32, 64]
   emb_dim: 192
   out_emb_dim: 384
   patch_size: [2, 2, 2]
   surface_ch: 4
   level_ch: 6
-  n_concatenated_states: 1
+  n_concatenated_states: 0
   final_interpolation: False
 
 

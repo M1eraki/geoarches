@@ -57,7 +57,9 @@ class ForecastModule(BaseLightningModule):
             if use_weatherbench_lat_coeffs
             else compute_lat_weights
         )
-        area_weights = compute_weights_fn(121)
+        latitude_resolution = cfg.embedder.img_size[1]
+        area_weights = compute_weights_fn(latitude_resolution)
+        #        area_weights = compute_weights_fn(121)
 
         pressure_levels = torch.tensor(era5.pressure_levels).float()
         vertical_coeffs = (pressure_levels / pressure_levels.mean()).reshape(-1, 1, 1)

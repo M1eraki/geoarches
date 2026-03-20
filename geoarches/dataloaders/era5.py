@@ -174,6 +174,8 @@ class Era5Dataset(XarrayDataset):
         # squeeze
         surface = tdict["surface"].squeeze(-3)
         level = tdict["level"]
+        lat = surface.shape[-2]
+        lon = surface.shape[-1]
 
         times = pd.to_datetime(timestamp.cpu().numpy(), unit="s").tz_localize(None)
         xr_dataset = xr.Dataset(
@@ -189,8 +191,8 @@ class Era5Dataset(XarrayDataset):
             ),
             coords=dict(
                 time=times,
-                latitude=np.arange(90, -90 - 1e-6, -180 / 120),  # decreasing lats
-                longitude=np.arange(0, 360, 360 / 240),
+                latitude=np.linspace(90, -90, lat),  # decreasing lats
+                longitude=np.linspace(0, 360 - 360 / lon, lon),
                 level=pressure_levels,
             ),
         )
