@@ -164,7 +164,8 @@ class WeatherEncodeDecodeLayer(nn.Module):
                 output_surface.flatten(0, 1), size=self.img_size[1:], mode="bilinear"
             )
             output_surface = output_surface.reshape(bs, -1, *output_surface.shape[1:])
-        else:
+        #        else:
+        elif self.img_size[1] % 2:
             # put back fake south pole
             output_surface = torch.cat([output_surface, output_surface[..., -1:, :]], dim=-2)
             output_level = torch.cat([output_level, output_level[..., -1:, :]], dim=-2)
