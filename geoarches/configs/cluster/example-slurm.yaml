@@ -9,9 +9,9 @@ cpus: 3
 
 launcher:
     cpus_per_task: 4
-    gpus_per_node: ${eval:'min(${cluster.gpus}, 8)'}
-    nodes: ${eval:'1 + (${cluster.gpus}-1) // 8'}
-    tasks_per_node: ${eval:'min(${cluster.gpus}, 8)'}
+    gpus_per_node: 8
+    nodes: 1
+    tasks_per_node: 1
     mem_gb: ${eval:'32 * min(${cluster.gpus}, 8)'}
     timeout_min: 1440
     name: ${name}
