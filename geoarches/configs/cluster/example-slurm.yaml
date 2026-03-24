@@ -3,8 +3,8 @@ use_custom_requeue: False
 
 precision: 16-mixed
 batch_size: 1
-gpus: 4
-cpus: 3
+gpus: 8
+cpus: 4
 
 
 launcher:
