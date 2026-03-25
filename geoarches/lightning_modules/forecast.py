@@ -145,11 +145,24 @@ class ForecastModule(BaseLightningModule):
                 pred = self.forward(loop_batch)
             preds_future.append(pred)
             # compute next batch
-            loop_batch = dict(
-                prev_state=loop_batch["state"],
-                state=pred,
-                timestamp=loop_batch["timestamp"] + batch["lead_time_hours"] * 3600,
-            )
+            # loop_batch = dict(
+            #     prev_state=loop_batch["state"],
+            #     state=pred,
+            #     timestamp=loop_batch["timestamp"] + batch["lead_time_hours"] * 3600,
+            # )
+
+            next_timestamp = loop_batch["timestamp"] + batch["lead_time_hours"] * 3600
+            if self.use_prev:
+                loop_batch = dict(
+                    prev_state=loop_batch["state"],
+                    state=pred,
+                    timestamp=next_timestamp,
+                )
+            else:
+                loop_batch = dict(
+                    state=pred,
+                    timestamp=next_timestamp,
+                )
 
         if return_format == "list":
             return preds_future
