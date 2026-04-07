@@ -18,6 +18,7 @@ from .archesweather_layers import (
     Mlp,
     UpSample,
 )
+from .spherical_rope import build_stage_mesh_features
 
 
 class WeatherEncodeDecodeLayer(nn.Module):
@@ -206,6 +207,10 @@ class ArchesWeatherCondBackbone(nn.Module):
         first_interaction_layer="linear",
         gradient_checkpointing=False,
         mlp_layer="mlp",
+        spatial_pos_encoding="earth_bias",
+        rope_max_l=7,
+        rope_alpha=1.0,
+        raw_spatial_size=(32, 64),
         **kwargs,
     ):
         super().__init__()
@@ -232,6 +237,32 @@ class ArchesWeatherCondBackbone(nn.Module):
         if window_size_stage4 is None:
             window_size_stage4 = (1, *self.layer1_shape)
 
+        stage1_rope_mesh = None
+        stage2_rope_mesh = None
+        if spatial_pos_encoding == "spherical_rope":
+            if use_shift:
+                raise NotImplementedError("spherical_rope currently requires use_shift=False")
+        if tuple(window_size_stage1) != (1, *self.layer1_shape):
+            raise NotImplementedError(
+                "spherical_rope currently requires full-stage window in layer1"
+            )
+        if tuple(window_size_stage2) != (1, *self.layer2_shape):
+            raise NotImplementedError(
+                "spherical_rope currently requires full-stage window in layer2"
+            )
+        if tuple(window_size_stage3) != (1, *self.layer2_shape):
+            raise NotImplementedError(
+                "spherical_rope currently requires full-stage window in layer3"
+            )
+        if tuple(window_size_stage4) != (1, *self.layer1_shape):
+            raise NotImplementedError(
+                "spherical_rope currently requires full-stage window in layer4"
+            )
+
+        stage1_rope_mesh, stage2_rope_mesh = build_stage_mesh_features(
+            raw_spatial_size=raw_spatial_size,
+            max_l=rope_max_l,
+        )
         # layer_args = dict(
         #    cond_dim=cond_dim,
         #    window_size=window_size,
@@ -247,6 +278,8 @@ class ArchesWeatherCondBackbone(nn.Module):
             mlp_layer=Mlp,
             mlp_ratio=mlp_ratio,
             use_shift=use_shift,
+            spatial_pos_encoding=spatial_pos_encoding,
+            rope_alpha=rope_alpha,
         )
 
         if mlp_layer == "swiglu":
@@ -269,6 +302,7 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[0],
             window_size=window_size_stage1,
             drop_path=drop_path[: 2 * depth_multiplier],
+            rope_mesh_features=stage1_rope_mesh,
             **layer_args,
             **kwargs,
         )
@@ -285,6 +319,7 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[1],
             window_size=window_size_stage2,
             drop_path=drop_path[2 * depth_multiplier :],
+            rope_mesh_features=stage2_rope_mesh,
             **layer_args,
             **kwargs,
         )
@@ -295,6 +330,7 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[2],
             window_size=window_size_stage3,
             drop_path=drop_path[2 * depth_multiplier :],
+            rope_mesh_features=stage2_rope_mesh,
             **layer_args,
             **kwargs,
         )
@@ -309,6 +345,7 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[3],
             window_size=window_size_stage4,
             drop_path=drop_path[: 2 * depth_multiplier],
+            rope_mesh_features=stage1_rope_mesh,
             **layer_args,
             **kwargs,
         )

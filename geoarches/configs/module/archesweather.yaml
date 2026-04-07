@@ -10,7 +10,7 @@ module:
   num_training_steps: ${max_steps}
   use_graphcast_coeffs: True
   use_prev: False
-  use_time_cond: False
+  use_time_cond: True
   loss_delta_normalization: False
 
 defaults:
@@ -54,6 +54,10 @@ backbone:
   axis_attn: True
   mlp_layer: swiglu
   mlp_ratio: 4.0
+  spatial_pos_encoding: earth_bias
+  rope_max_l: 7
+  rope_alpha: 0.025
+  raw_spatial_size: [32, 64]
 
 embedder: 
   _target_: geoarches.backbones.archesweather.WeatherEncodeDecodeLayer
@@ -65,5 +69,5 @@ embedder:
   level_ch: 6
   n_concatenated_states: 0
   final_interpolation: False
-  use_constant_masks: False
+  use_constant_masks: True
 
