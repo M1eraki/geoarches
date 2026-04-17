@@ -18,6 +18,7 @@ from .archesweather_layers import (
     Mlp,
     UpSample,
 )
+from .spherical_rope import build_stage_mesh_features
 
 
 class WeatherEncodeDecodeLayer(nn.Module):
@@ -201,6 +202,10 @@ class ArchesWeatherCondBackbone(nn.Module):
         first_interaction_layer="linear",
         gradient_checkpointing=False,
         mlp_layer="mlp",
+        spatial_pos_encoding="earth_bias",
+        rope_max_l=7,
+        rope_alpha=1.0,
+        raw_spatial_size=None,
         **kwargs,
     ):
         super().__init__()
@@ -226,6 +231,16 @@ class ArchesWeatherCondBackbone(nn.Module):
             window_size_stage3 = (1, *self.layer2_shape)
         if window_size_stage4 is None:
             window_size_stage4 = (1, *self.layer1_shape)
+
+        stage1_rope_mesh = None
+        stage2_rope_mesh = None
+        if spatial_pos_encoding == "spherical_rope":
+            if raw_spatial_size is None:
+                raise ValueError("raw_spatial_size must be provided for spherical_rope")
+            stage1_rope_mesh, stage2_rope_mesh = build_stage_mesh_features(
+                raw_spatial_size=raw_spatial_size,
+                max_l=rope_max_l,
+            )
 
         # layer_args = dict(
         #    cond_dim=cond_dim,
@@ -264,6 +279,9 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[0],
             window_size=window_size_stage1,
             drop_path=drop_path[: 2 * depth_multiplier],
+            spatial_pos_encoding=spatial_pos_encoding,
+            rope_mesh_features=stage1_rope_mesh,
+            rope_alpha=rope_alpha,
             **layer_args,
             **kwargs,
         )
@@ -280,6 +298,9 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[1],
             window_size=window_size_stage2,
             drop_path=drop_path[2 * depth_multiplier :],
+            spatial_pos_encoding=spatial_pos_encoding,
+            rope_mesh_features=stage2_rope_mesh,
+            rope_alpha=rope_alpha,
             **layer_args,
             **kwargs,
         )
@@ -290,6 +311,9 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[2],
             window_size=window_size_stage3,
             drop_path=drop_path[2 * depth_multiplier :],
+            spatial_pos_encoding=spatial_pos_encoding,
+            rope_mesh_features=stage2_rope_mesh,
+            rope_alpha=rope_alpha,
             **layer_args,
             **kwargs,
         )
@@ -304,6 +328,9 @@ class ArchesWeatherCondBackbone(nn.Module):
             num_heads=num_heads[3],
             window_size=window_size_stage4,
             drop_path=drop_path[: 2 * depth_multiplier],
+            spatial_pos_encoding=spatial_pos_encoding,
+            rope_mesh_features=stage1_rope_mesh,
+            rope_alpha=rope_alpha,
             **layer_args,
             **kwargs,
         )
