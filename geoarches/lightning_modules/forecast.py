@@ -145,11 +145,23 @@ class ForecastModule(BaseLightningModule):
                 pred = self.forward(loop_batch)
             preds_future.append(pred)
             # compute next batch
-            loop_batch = dict(
-                prev_state=loop_batch["state"],
-                state=pred,
-                timestamp=loop_batch["timestamp"] + batch["lead_time_hours"] * 3600,
-            )
+            # loop_batch = dict(
+            #     prev_state=loop_batch["state"],
+            #     state=pred,
+            #     timestamp=loop_batch["timestamp"] + batch["lead_time_hours"] * 3600,
+            # )
+            next_timestamp = loop_batch["timestamp"] + batch["lead_time_hours"] * 3600
+            if self.use_prev:
+                loop_batch = dict(
+                    prev_state=loop_batch["state"],
+                    state=pred,
+                    timestamp=next_timestamp,
+                )
+            else:
+                loop_batch = dict(
+                    state=pred,
+                    timestamp=next_timestamp,
+                )
 
         if return_format == "list":
             return preds_future
@@ -367,6 +379,7 @@ class ForecastModuleWithCond(ForecastModule):
         *args,
         cond_dim=32,
         use_prev=False,
+        use_time_cond=True,
         use_avg=False,
         avg_with_modules=[],
         **kwargs,
@@ -375,8 +388,11 @@ class ForecastModuleWithCond(ForecastModule):
 
         super().__init__(*args, **kwargs)
         # cond_dim should be given as arg to the backbone
-        self.month_embedder = dit.TimestepEmbedder(cond_dim)
-        self.hour_embedder = dit.TimestepEmbedder(cond_dim)
+        self.cond_dim = cond_dim
+        self.use_time_cond = use_time_cond
+        if self.use_time_cond:
+            self.month_embedder = dit.TimestepEmbedder(cond_dim)
+            self.hour_embedder = dit.TimestepEmbedder(cond_dim)
         self.use_prev = use_prev
         self.use_avg = use_avg
 
@@ -391,14 +407,15 @@ class ForecastModuleWithCond(ForecastModule):
 
     def forward(self, batch, use_avg=True):
         device = batch["state"].device
-        # convert time into str
-
-        times = pd.to_datetime(batch["timestamp"].cpu().numpy(), unit="s").tz_localize(None)
-        month = torch.tensor(times.month).to(device)
-        month_emb = self.month_embedder(month)
-        hour = torch.tensor(times.hour).to(device)
-        hour_emb = self.hour_embedder(hour)
-
-        cond_emb = month_emb + hour_emb
+        if self.use_time_cond:
+            # convert time into str
+            times = pd.to_datetime(batch["timestamp"].cpu().numpy(), unit="s").tz_localize(None)
+            month = torch.tensor(times.month).to(device)
+            month_emb = self.month_embedder(month)
+            hour = torch.tensor(times.hour).to(device)
+            hour_emb = self.hour_embedder(hour)
+            cond_emb = month_emb + hour_emb
+        else:
+            cond_emb = torch.zeros(batch["timestamp"].shape[0], self.cond_dim, device=device)
 
         return super().forward(batch, cond_emb)

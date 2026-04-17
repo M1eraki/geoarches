@@ -10,6 +10,7 @@ module:
   num_training_steps: ${max_steps}
   use_graphcast_coeffs: True
   use_prev: False
+  use_time_cond: True
   loss_delta_normalization: False
 
 defaults:
@@ -64,5 +65,4 @@ embedder:
   level_ch: 6
   n_concatenated_states: 0
   final_interpolation: False
-
-
+  use_constant_masks: True

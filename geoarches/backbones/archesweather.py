@@ -36,6 +36,7 @@ class WeatherEncodeDecodeLayer(nn.Module):
         n_concatenated_states=0,
         final_interpolation=False,
         auto_move_to_device=True,
+        use_constant_masks=True,
     ) -> None:
         super().__init__()
         self.__dict__.update(locals())
@@ -46,7 +47,10 @@ class WeatherEncodeDecodeLayer(nn.Module):
         )
         constant_dims = self.constant_masks.shape[0]
 
-        surface_ch_in = constant_dims + surface_ch + n_concatenated_states * surface_ch
+        if use_constant_masks:
+            surface_ch_in = constant_dims + surface_ch + n_concatenated_states * surface_ch
+        else:
+            surface_ch_in = surface_ch + n_concatenated_states * surface_ch
         level_ch_in = level_ch + n_concatenated_states * level_ch
 
         if torch.backends.mps.is_available():
@@ -116,9 +120,9 @@ class WeatherEncodeDecodeLayer(nn.Module):
             surface = surface[..., :-1, :]
             level = level[..., :-1, :]
 
-        constant = self.constant_masks[None, :, 0].expand((bs, -1, -1, -1))
-
-        surface = torch.cat([surface, constant], dim=1)
+        if self.use_constant_masks:
+            constant = self.constant_masks[None, :, 0].expand((bs, -1, -1, -1))
+            surface = torch.cat([surface, constant], dim=1)
 
         if cond_state is not None:
             cond_surface = cond_state["surface"].squeeze(-3)
@@ -164,7 +168,7 @@ class WeatherEncodeDecodeLayer(nn.Module):
                 output_surface.flatten(0, 1), size=self.img_size[1:], mode="bilinear"
             )
             output_surface = output_surface.reshape(bs, -1, *output_surface.shape[1:])
-        else:
+        elif self.img_size[1] % 2:
             # put back fake south pole
             output_surface = torch.cat([output_surface, output_surface[..., -1:, :]], dim=-2)
             output_level = torch.cat([output_level, output_level[..., -1:, :]], dim=-2)
