@@ -12,18 +12,18 @@ module:
   uncond_proba: 0.0
 
   # what to learn
-  load_deterministic_model: 
-    - modelstore/archesweather-m-skip-seed0-6h-32x64
-    - modelstore/archesweather-m-skip-seed1-6h-32x64
-    - modelstore/archesweather-m-seed0-6h-32x64
-    - modelstore/archesweather-m-seed1-6h-32x64 # used to load preds if learn_residual="pred" and not loaded by dataloader from storage.
+  load_deterministic_model:
+    - archesweather-m-skip-seed0-6h-32x64
+    - archesweather-m-skip-seed1-6h-32x64
+    - archesweather-m-skip-seed2-6h-32x64
+    - archesweather-m-skip-seed3-6h-32x64
   learn_residual: pred  # "default" to just learn [next_state-state], "pred" to learn residual of deterministic model.
-  conditional: det # or prev+det for instance
+  conditional: det # use deterministic prediction without previous state
 
   # scales
   loss_delta_normalization: False
   loss_weighting_strategy: debiased
-  state_normalization: False 
+  state_normalization: False
   pow: 2.0
 
   use_classifier: False # debug
@@ -86,4 +86,4 @@ embedder:
   patch_size: [2, 2, 2]
   surface_ch: 4
   level_ch: 6
-  n_concatenated_states: 2 # prev and noise and det
+  n_concatenated_states: 2 # noise and det

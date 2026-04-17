@@ -70,4 +70,3 @@ embedder:
   n_concatenated_states: 0
   final_interpolation: False
   use_constant_masks: True
-
