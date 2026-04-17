@@ -54,6 +54,10 @@ backbone:
   axis_attn: True
   mlp_layer: swiglu
   mlp_ratio: 4.0
+  spatial_pos_encoding: earth_bias
+  rope_max_l: 7
+  rope_alpha: 0.025
+  raw_spatial_size: [32, 64]
 
 embedder: 
   _target_: geoarches.backbones.archesweather.WeatherEncodeDecodeLayer

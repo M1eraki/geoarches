@@ -87,6 +87,8 @@ class DiffusionModule(BaseLightningModule):
 
         self.inference_scheduler = deepcopy(self.noise_scheduler)
 
+        # area_weights = torch.arange(-90, 90 + 1e-6, 1.5).mul(torch.pi / 180).cos()
+        # area_weights = (area_weights / area_weights.mean())[:, None]
         latitude_resolution = cfg.embedder.img_size[1]
         area_weights = compute_lat_weights_weatherbench(latitude_resolution)
 

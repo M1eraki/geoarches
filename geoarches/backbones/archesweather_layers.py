@@ -4,6 +4,7 @@ import torch
 from timm.models.layers import DropPath, trunc_normal_
 from torch import nn
 
+from .spherical_rope import SphericalRopeLayer
 from .weatherlearn_utils.crop import crop3d
 from .weatherlearn_utils.earth_position_index import get_earth_position_index
 from .weatherlearn_utils.pad import get_pad3d
@@ -234,6 +235,9 @@ class EarthAttention3D(nn.Module):
         qk_scale=None,
         attn_drop=0.0,
         proj_drop=0.0,
+        spatial_pos_encoding="earth_bias",
+        rope_mesh_features=None,
+        rope_alpha=1.0,
     ):
         super().__init__()
         self.dim = dim
@@ -242,29 +246,41 @@ class EarthAttention3D(nn.Module):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim**-0.5
 
+        self.spatial_pos_encoding = spatial_pos_encoding
         self.type_of_windows = (input_resolution[0] // window_size[0]) * (
             input_resolution[1] // window_size[1]
         )
+        if self.spatial_pos_encoding == "earth_bias":
+            self.earth_position_bias_table = nn.Parameter(
+                torch.zeros(
+                    (window_size[0] ** 2) * (window_size[1] ** 2) * (window_size[2] * 2 - 1),
+                    self.type_of_windows,
+                    num_heads,
+                )
+            )  # Wpl**2 * Wlat**2 * Wlon*2-1, Npl//Wpl * Nlat//Wlat, nH
 
-        self.earth_position_bias_table = nn.Parameter(
-            torch.zeros(
-                (window_size[0] ** 2) * (window_size[1] ** 2) * (window_size[2] * 2 - 1),
-                self.type_of_windows,
-                num_heads,
+            earth_position_index = get_earth_position_index(
+                window_size
+            )  # Wpl*Wlat*Wlon, Wpl*Wlat*Wlon
+            self.register_buffer("earth_position_index", earth_position_index)
+            trunc_normal_(self.earth_position_bias_table, std=0.02)
+        elif self.spatial_pos_encoding == "spherical_rope":
+            if rope_mesh_features is None:
+                raise ValueError("rope_mesh_features must be provided for spherical_rope")
+            self.rope = SphericalRopeLayer(
+                head_dim=head_dim,
+                n_heads=num_heads,
+                mesh_features=rope_mesh_features,
+                alpha=rope_alpha,
             )
-        )  # Wpl**2 * Wlat**2 * Wlon*2-1, Npl//Wpl * Nlat//Wlat, nH
-
-        earth_position_index = get_earth_position_index(
-            window_size
-        )  # Wpl*Wlat*Wlon, Wpl*Wlat*Wlon
-        self.register_buffer("earth_position_index", earth_position_index)
-
+        else:
+            raise ValueError(f"Unknown spatial_pos_encoding: {self.spatial_pos_encoding}")
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        trunc_normal_(self.earth_position_bias_table, std=0.02)
+        #        trunc_normal_(self.earth_position_bias_table, std=0.02)
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x: torch.Tensor, mask=None):
@@ -280,22 +296,26 @@ class EarthAttention3D(nn.Module):
             .permute(3, 0, 4, 1, 2, 5)
         )
         q, k, v = qkv[0], qkv[1], qkv[2]
+        if self.spatial_pos_encoding == "spherical_rope":
+            q = self.rope(q)
+            k = self.rope(k)
 
         q = q * self.scale
         attn = q @ k.transpose(-2, -1)
 
-        earth_position_bias = self.earth_position_bias_table[
-            self.earth_position_index.view(-1)
-        ].view(
-            self.window_size[0] * self.window_size[1] * self.window_size[2],
-            self.window_size[0] * self.window_size[1] * self.window_size[2],
-            self.type_of_windows,
-            -1,
-        )  # Wpl*Wlat*Wlon, Wpl*Wlat*Wlon, num_pl*num_lat, nH
-        earth_position_bias = earth_position_bias.permute(
-            3, 2, 0, 1
-        ).contiguous()  # nH, num_pl*num_lat, Wpl*Wlat*Wlon, Wpl*Wlat*Wlon
-        attn = attn + earth_position_bias.unsqueeze(0)
+        if self.spatial_pos_encoding == "earth_bias":
+            earth_position_bias = self.earth_position_bias_table[
+                self.earth_position_index.view(-1)
+            ].view(
+                self.window_size[0] * self.window_size[1] * self.window_size[2],
+                self.window_size[0] * self.window_size[1] * self.window_size[2],
+                self.type_of_windows,
+                -1,
+            )  # Wpl*Wlat*Wlon, Wpl*Wlat*Wlon, num_pl*num_lat, nH
+            earth_position_bias = earth_position_bias.permute(
+                3, 2, 0, 1
+            ).contiguous()  # nH, num_pl*num_lat, Wpl*Wlat*Wlon, Wpl*Wlat*Wlon
+            attn = attn + earth_position_bias.unsqueeze(0)
 
         if mask is not None:
             nLon = mask.shape[0]
@@ -352,6 +372,9 @@ class EarthSpecificBlock(nn.Module):
         act_layer=nn.GELU,
         mlp_layer=Mlp,
         norm_layer=nn.LayerNorm,
+        spatial_pos_encoding="earth_bias",
+        rope_mesh_features=None,
+        rope_alpha=1.0,
     ):
         super().__init__()
         window_size = (2, 6, 12) if window_size is None else window_size
@@ -382,6 +405,9 @@ class EarthSpecificBlock(nn.Module):
             qk_scale=qk_scale,
             attn_drop=attn_drop,
             proj_drop=drop,
+            spatial_pos_encoding=spatial_pos_encoding,
+            rope_mesh_features=rope_mesh_features,
+            rope_alpha=rope_alpha,
         )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()

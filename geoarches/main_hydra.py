@@ -251,8 +251,14 @@ def main(cfg: DictConfig):
 
     torch.set_float32_matmul_precision("medium")
     L.seed_everything(cfg.seed)
+
+    launcher = getattr(cfg.cluster, "launcher", None)
+    launcher_nodes = getattr(launcher, "nodes", 1) if launcher is not None else 1
+    num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES", launcher_nodes))
+
     trainer = L.Trainer(
         devices="auto",
+        num_nodes=num_nodes,
         accelerator="auto",
         strategy="ddp_find_unused_parameters_true" if torch.cuda.is_available() else "auto",
         precision=cfg.cluster.precision,
