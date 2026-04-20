@@ -14,8 +14,9 @@ from tqdm import tqdm
 
 import geoarches.stats as geoarches_stats
 from geoarches.backbones.dit import TimestepEmbedder
-from geoarches.dataloaders import era5, zarr
+from geoarches.dataloaders import zarr
 from geoarches.lightning_modules import BaseLightningModule
+from geoarches.metrics.metric_base import compute_lat_weights, compute_lat_weights_weatherbench
 from geoarches.utils.tensordict_utils import tensordict_apply, tensordict_cat
 
 geoarches_stats_path = importlib.resources.files(geoarches_stats)
@@ -39,6 +40,7 @@ class DiffusionModule(BaseLightningModule):
         beta_end=0.012,
         loss_weighting_strategy=None,
         conditional="",  # things that the model is conditioned
+        use_time_cond=True,
         load_deterministic_model=False,
         loss_delta_normalization=False,
         state_normalization=False,
@@ -51,6 +53,7 @@ class DiffusionModule(BaseLightningModule):
         num_cycles=0.5,
         learn_residual=False,
         sd3_timestep_sampling=True,
+        use_weatherbench_lat_coeffs=True,
         **kwargs,
     ):
         """
@@ -76,9 +79,10 @@ class DiffusionModule(BaseLightningModule):
 
         # cond_dim should be given as arg to the backbone
 
-        self.month_embedder = TimestepEmbedder(cond_dim)
-        self.hour_embedder = TimestepEmbedder(cond_dim)
         self.timestep_embedder = TimestepEmbedder(cond_dim)
+        if self.use_time_cond:
+            self.month_embedder = TimestepEmbedder(cond_dim)
+            self.hour_embedder = TimestepEmbedder(cond_dim)
 
         self.noise_scheduler = FlowMatchEulerDiscreteScheduler(
             num_train_timesteps=num_train_timesteps
@@ -86,8 +90,13 @@ class DiffusionModule(BaseLightningModule):
 
         self.inference_scheduler = deepcopy(self.noise_scheduler)
 
-        area_weights = torch.arange(-90, 90 + 1e-6, 1.5).mul(torch.pi / 180).cos()
-        area_weights = (area_weights / area_weights.mean())[:, None]
+        compute_weights_fn = (
+            compute_lat_weights_weatherbench
+            if use_weatherbench_lat_coeffs
+            else compute_lat_weights
+        )
+        latitude_resolution = cfg.embedder.img_size[1]
+        area_weights = compute_weights_fn(latitude_resolution)
 
         # set up metrics
         self.val_metrics = nn.ModuleList(
@@ -99,26 +108,39 @@ class DiffusionModule(BaseLightningModule):
                 for metric_name, metric in cfg.inference.metrics.items()
             }
         )
-        # define coeffs for loss
-
-        pressure_levels = torch.tensor(era5.pressure_levels).float()
-        vertical_coeffs = (pressure_levels / pressure_levels.mean()).reshape(-1, 1, 1)
-
-        # define relative surface and level weights
-        total_coeff = 6 + 1.3
-        surface_coeffs = 4 * torch.tensor([0.1, 0.1, 1.0, 0.1]).reshape(
-            -1, 1, 1, 1
-        )  # graphcast, mul 4 because we do a mean
-        level_coeffs = 6 * torch.tensor(1).reshape(-1, 1, 1, 1)
-
+        # Current training uses latitude-only weighting to match the deterministic setup.
+        # Previous diffusion loss weighting kept for reference:
+        #
+        # pressure_levels = torch.tensor(era5.pressure_levels).float()
+        # vertical_coeffs = (pressure_levels / pressure_levels.mean()).reshape(-1, 1, 1)
+        #
+        # total_coeff = 6 + 1.3
+        # surface_coeffs = 4 * torch.tensor([0.1, 0.1, 1.0, 0.1]).reshape(
+        #     -1, 1, 1, 1
+        # )
+        # level_coeffs = 6 * torch.tensor(1).reshape(-1, 1, 1, 1)
+        #
+        # self.loss_coeffs = TensorDict(
+        #     surface=area_weights * surface_coeffs / total_coeff,
+        #     level=area_weights * level_coeffs * vertical_coeffs / total_coeff,
+        # )
         self.loss_coeffs = TensorDict(
-            surface=area_weights * surface_coeffs / total_coeff,
-            level=area_weights * level_coeffs * vertical_coeffs / total_coeff,
+            surface=area_weights,
+            level=area_weights,
         )
-        # scaling loss or states
         pangu_stats = torch.load(
             geoarches_stats_path / "pangu_norm_stats2_with_w.pt", weights_only=True
         )
+        if loss_delta_normalization:
+            self.loss_delta_scaler = TensorDict(
+                level=pangu_stats["level_std"]
+                / torch.tensor(
+                    [5.9786e02, 7.4878e00, 8.9492e00, 2.7132e00, 9.5222e-04, 0.3]
+                ).reshape(-1, 1, 1, 1),
+                surface=pangu_stats["surface_std"]
+                / torch.tensor([3.8920, 4.5422, 2.0727, 584.0980]).reshape(-1, 1, 1, 1),
+            )
+            self.loss_coeffs = self.loss_coeffs * self.loss_delta_scaler.pow(self.pow)
         pangu_scaler = TensorDict(
             level=pangu_stats["level_std"], surface=pangu_stats["surface_std"]
         )
@@ -161,15 +183,15 @@ class DiffusionModule(BaseLightningModule):
         if "det" in conditional_keys:
             input_state = tensordict_cat([pred_state, input_state], dim=1)
 
-        # conditional by default
-        times = pd.to_datetime(batch["timestamp"].cpu().numpy() * 10**9).tz_localize(None)
-        month = torch.tensor(times.month).to(device)
-        month_emb = self.month_embedder(month)
-        hour = torch.tensor(times.hour).to(device)
-        hour_emb = self.hour_embedder(hour)
         timestep_emb = self.timestep_embedder(timesteps)
-
-        cond_emb = month_emb + hour_emb + timestep_emb
+        cond_emb = timestep_emb
+        if self.use_time_cond:
+            times = pd.to_datetime(batch["timestamp"].cpu().numpy() * 10**9).tz_localize(None)
+            month = torch.tensor(times.month).to(device)
+            month_emb = self.month_embedder(month)
+            hour = torch.tensor(times.hour).to(device)
+            hour_emb = self.hour_embedder(hour)
+            cond_emb = cond_emb + month_emb + hour_emb
 
         x = self.embedder.encode(batch["state"], input_state)
 
@@ -251,12 +273,13 @@ class DiffusionModule(BaseLightningModule):
 
     def loss(self, pred, gt, timesteps=None, **kwargs):
         loss_coeffs = self.loss_coeffs.to(self.device)
-        if self.prediction_type == "sample":
-            # loss weighting strategy
-            sigmas = timesteps / self.noise_scheduler.config.num_train_timesteps
-            snr_weights = (1 - sigmas) / sigmas
-            snr_weights = snr_weights.to(self.device)[:, None, None, None, None]
-            loss_coeffs = loss_coeffs.apply(lambda x: x * snr_weights)
+        # Previous diffusion training additionally applied timestep-dependent SNR weights:
+        #
+        # if self.prediction_type == "sample":
+        #     sigmas = timesteps / self.noise_scheduler.config.num_train_timesteps
+        #     snr_weights = (1 - sigmas) / sigmas
+        #     snr_weights = snr_weights.to(self.device)[:, None, None, None, None]
+        #     loss_coeffs = loss_coeffs.apply(lambda x: x * snr_weights)
 
         weighted_error = (pred - gt).abs().pow(self.pow).mul(loss_coeffs)
         loss = sum(weighted_error.mean().values())
