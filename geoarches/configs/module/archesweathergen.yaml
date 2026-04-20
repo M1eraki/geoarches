@@ -19,16 +19,18 @@ module:
     - archesweather-m-skip-seed3-6h-32x64
   learn_residual: pred  # "default" to just learn [next_state-state], "pred" to learn residual of deterministic model.
   conditional: det # use deterministic prediction without previous state
+  use_time_cond: True
 
   # scales
   loss_delta_normalization: False
-  loss_weighting_strategy: debiased
+  use_weatherbench_lat_coeffs: True
+  # loss_weighting_strategy: debiased
   state_normalization: False
   pow: 2.0
 
   use_classifier: False # debug
   add_input_state: False
-  snr_strategy: None
+  # snr_strategy: None
 
   # opt
   lr: 3e-4
@@ -68,7 +70,11 @@ backbone:
   tensor_size: [8, 16, 32] # after embed
   emb_dim: 192
   cond_dim: 256
-  window_size: [1, 16, 32]
+  window_size_stage1: [1, 16, 32]
+  window_size_stage2: [1, 8, 16]
+  window_size_stage3: [1, 8, 16]
+  window_size_stage4: [1, 16, 32]
+  use_shift: False
   droppath_coeff: 0.2
   dropout: 0
   depth_multiplier: 1
@@ -77,6 +83,10 @@ backbone:
   axis_attn: True
   mlp_layer: swiglu
   mlp_ratio: 4.0
+  spatial_pos_encoding: earth_bias
+  rope_max_l: 7
+  rope_alpha: 0.025
+  raw_spatial_size: [32, 64]
 
 embedder: 
   _target_: geoarches.backbones.archesweather.WeatherEncodeDecodeLayer
@@ -87,3 +97,4 @@ embedder:
   surface_ch: 4
   level_ch: 6
   n_concatenated_states: 2 # noise and det
+  use_constant_masks: True

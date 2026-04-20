@@ -16,7 +16,6 @@ import geoarches.stats as geoarches_stats
 from geoarches.backbones.dit import TimestepEmbedder
 from geoarches.dataloaders import era5, zarr
 from geoarches.lightning_modules import BaseLightningModule
-from geoarches.metrics.metric_base import compute_lat_weights_weatherbench
 from geoarches.utils.tensordict_utils import tensordict_apply, tensordict_cat
 
 geoarches_stats_path = importlib.resources.files(geoarches_stats)
@@ -87,10 +86,8 @@ class DiffusionModule(BaseLightningModule):
 
         self.inference_scheduler = deepcopy(self.noise_scheduler)
 
-        # area_weights = torch.arange(-90, 90 + 1e-6, 1.5).mul(torch.pi / 180).cos()
-        # area_weights = (area_weights / area_weights.mean())[:, None]
-        latitude_resolution = cfg.embedder.img_size[1]
-        area_weights = compute_lat_weights_weatherbench(latitude_resolution)
+        area_weights = torch.arange(-90, 90 + 1e-6, 1.5).mul(torch.pi / 180).cos()
+        area_weights = (area_weights / area_weights.mean())[:, None]
 
         # set up metrics
         self.val_metrics = nn.ModuleList(
