@@ -71,6 +71,11 @@ class BaseLightningModule(L.LightningModule):
             paths = list(Path(path).glob("*.ckpt"))
             if ckpt_fname is not None:
                 paths = [p for p in paths if ckpt_fname in p.name]
+            if not paths:
+                raise FileNotFoundError(
+                    f"No checkpoint found under {path}"
+                    + (f" matching '{ckpt_fname}'." if ckpt_fname is not None else ".")
+                )
             # sort by date
             path = sorted(paths, key=lambda x: x.stat().st_mtime)[-1]
 
@@ -125,7 +130,7 @@ class AvgModule(L.LightningModule):
     Wrapper around several lightning modules to run forward and compute average prediction.
     """
 
-    def __init__(self, module_paths):
+    def __init__(self, module_paths, ckpt_fname: str | None = None):
         super().__init__()
         path = module_paths[0]
         if Path("modelstore").joinpath(path).exists():
@@ -133,7 +138,9 @@ class AvgModule(L.LightningModule):
         else:
             path = Path(path)
         self.cfg = OmegaConf.load(path / "config.yaml")
-        self.core = nn.ModuleList([load_module(p, return_config=False) for p in module_paths])
+        self.core = nn.ModuleList(
+            [load_module(p, return_config=False, ckpt_fname=ckpt_fname) for p in module_paths]
+        )
 
     def forward(self, *args, **kwargs):
         return torch.stack([m.forward(*args, **kwargs) for m in self.core], dim=0).mean(dim=0)

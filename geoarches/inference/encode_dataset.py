@@ -34,6 +34,12 @@ parser.add_argument(
     type=str,
     help="Comma separated list of model uids, names of checkpoint folders stored under `modelstore/` dir.",
 )
+parser.add_argument(
+    "--ckpt-fname",
+    default=None,
+    type=str,
+    help="Optional checkpoint filename substring to load from each model's `checkpoints/` directory.",
+)
 
 
 args = parser.parse_args()
@@ -43,7 +49,7 @@ torch.set_grad_enabled(False)
 
 device = "cuda:0"
 
-model_uids = args.uids.split(",")
+model_uids = [uid.strip() for uid in args.uids.split(",") if uid.strip()]
 
 if Path(args.output_path).exists() and args.force:
     shutil.rmtree(args.output_path)
@@ -52,10 +58,10 @@ Path(args.output_path).mkdir(parents=True, exist_ok=True)
 
 
 if len(model_uids) > 1:
-    module = AvgModule(model_uids).to(device).eval()
+    module = AvgModule(model_uids, ckpt_fname=args.ckpt_fname).to(device).eval()
     cfg = module.cfg
 else:
-    module, cfg = load_module(model_uids[0])
+    module, cfg = load_module(model_uids[0], ckpt_fname=args.ckpt_fname)
     module.to(device).eval()
 
 
